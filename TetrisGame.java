@@ -16,7 +16,11 @@ import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.Timer;
+
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class TetrisGame extends JPanel implements ActionListener, KeyListener {
@@ -29,6 +33,7 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
     private Font mediumFont;
 
     private boolean gameEnd;
+    private boolean isPaused;
     private int highScore = 0;
     private int score;
     private int linesCleared;
@@ -39,15 +44,34 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
 
     private Tetromino currentPiece;
     private Tetromino nextPiece;
+    private List<Integer> shapeOrder;
+    private int currentShapeIndex;
+
+    private final int[][][] SHAPES = {
+            // Tetromino shapes and rotations
+            {}, // Empty Shape
+            { { 1, 1, 1, 1 } }, // I shape
+            { { 1, 1, 1 }, { 0, 1, 0 } }, // T shape
+            { { 1, 1, 0 }, { 0, 1, 1 } }, // S shape
+            { { 0, 1, 1 }, { 1, 1, 0 } }, // Z shape
+            { { 1, 1 }, { 1, 1 } }, // O shape
+            { { 1, 1, 1 }, { 0, 0, 1 } }, // L shape
+            { { 0, 0, 1 }, { 1, 1, 1 } } // backwards L shape
+            // Add more shapes here
+    };
 
     private Map<Integer, Color> shapeColorMap = new HashMap<>();
 
     public TetrisGame() {
         gameEnd = false;
+        isPaused = false;
         largeFont = new Font("Arial", Font.BOLD, 36);
         mediumFont = new Font("Arial", Font.BOLD, 30);
         timer = new Timer(500, this);
         pieceBanked = false;
+
+        initializeShapeOrder();
+        currentShapeIndex = 0;
         currentPiece = new Tetromino();
         nextPiece = new Tetromino();
 
@@ -69,8 +93,17 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
         shapeColorMap.put(4, Color.RED);
         shapeColorMap.put(5, Color.YELLOW);
         shapeColorMap.put(6, Color.ORANGE);
+        shapeColorMap.put(7, Color.BLUE);
 
         timer.start();
+    }
+
+    private void initializeShapeOrder() {
+        shapeOrder = new ArrayList<>();
+        for (int i = 1; i < SHAPES.length; i++) {
+            shapeOrder.add(i);
+        }
+        Collections.shuffle(shapeOrder); // Shuffle the order
     }
 
     @Override
@@ -82,18 +115,26 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
     @Override
     public void keyPressed(KeyEvent e) {
         if (!gameEnd) {
-            if (e.getKeyCode() == KeyEvent.VK_LEFT) {
+            if (e.getKeyCode() == KeyEvent.VK_A) {
                 movePiece(-1, 0);
-            } else if (e.getKeyCode() == KeyEvent.VK_RIGHT) {
+            } else if (e.getKeyCode() == KeyEvent.VK_D) {
                 movePiece(1, 0);
-            } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
+            } else if (e.getKeyCode() == KeyEvent.VK_S) {
                 score += 1;
                 movePieceDown();
-            } else if (e.getKeyCode() == KeyEvent.VK_UP) {
+            } else if (e.getKeyCode() == KeyEvent.VK_W) {
                 currentPiece.rotate();
             } else if (e.getKeyCode() == KeyEvent.VK_SHIFT) {
                 bankPiece();
+            } else if (e.getKeyCode() == KeyEvent.VK_P) { // For pausing/unpausing
+                isPaused = !isPaused;
+                if (isPaused) {
+                    timer.stop();
+                } else {
+                    timer.start();
+                }
             }
+
         }
         repaint();
     }
@@ -106,20 +147,22 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
     }
 
     private void movePieceDown() {
-        currentPiece.move(0, 1);
-        if (collision()) {
-            currentPiece.move(0, -1);
-            currentPiece.merge();
-            pieceBanked = false;
-            clearFilledRows();
+        if (!isPaused) {
+            currentPiece.move(0, 1);
+            if (collision()) {
+                currentPiece.move(0, -1);
+                currentPiece.merge();
+                pieceBanked = false;
+                clearFilledRows();
 
-            if (currentPiece.y <= 2) {
-                gameOver();
-                return;
+                if (currentPiece.y <= 2) {
+                    gameOver();
+                    return;
+                }
+
+                currentPiece = nextPiece;
+                nextPiece = new Tetromino();
             }
-
-            currentPiece = nextPiece;
-            nextPiece = new Tetromino();
         }
     }
 
@@ -158,11 +201,6 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
                 }
 
                 currentLinesCleared++;
-                if (linesCleared % 10 == 0) {
-                    currentLevel = linesCleared / 10;
-                    timerDelay = initialTimerDelay - currentLevel * 50; // Decrease delay as level increases
-                    timer.setDelay(timerDelay);
-                }
 
                 row++; // Check the same row again since we shifted rows down
             }
@@ -176,6 +214,13 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
                 saveHighScore();
             }
             linesCleared += currentLinesCleared;
+            if (linesCleared % 10 == 0) {
+                currentLevel = linesCleared / 10;
+                timerDelay = initialTimerDelay - (currentLevel * (20 + currentLevel)); // Decrease delay as level
+                                                                                       // increases
+                timer.setDelay(timerDelay);
+            }
+            // System.out.println(linesCleared + " lines"); //DEBUG
         }
     }
 
@@ -202,7 +247,8 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
     }
 
     private void saveHighScore() {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter("highscore.txt"))) {
+        try (BufferedWriter writer = new BufferedWriter(
+                new FileWriter("data.txt"))) {
             writer.write(Integer.toString(highScore));
         } catch (IOException e) {
             // Handle file write error
@@ -210,7 +256,8 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
     }
 
     private void loadHighScore() {
-        try (BufferedReader reader = new BufferedReader(new FileReader("highscore.txt"))) {
+        try (BufferedReader reader = new BufferedReader(
+                new FileReader("data.txt"))) {
             String line = reader.readLine();
             if (line != null) {
                 highScore = Integer.parseInt(line);
@@ -225,14 +272,20 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
             Tetromino tempPiece = currentPiece;
             currentPiece = nextPiece;
             nextPiece = tempPiece;
+            nextPiece.x = BOARD_WIDTH / 2 - nextPiece.shape[0].length / 2;
+            nextPiece.y = 2;
             pieceBanked = true;
         }
     }
 
     private void gameOver() {
         gameEnd = true;
+        if (score >= highScore) {
+            highScore = score;
+        }
+        saveHighScore();
         timer.stop();
-        System.out.println("Game Over");
+        // System.out.println("Game Over"); //DEBUG
 
         timerDelay = initialTimerDelay;
         timer.setDelay(timerDelay);
@@ -261,6 +314,7 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
 
         // Reset variables
         score = 0;
+        loadHighScore();
         linesCleared = 0;
         currentLevel = 0;
         timerDelay = initialTimerDelay;
@@ -278,21 +332,15 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
         private int x, y;
         private int shapeIdentifier;
 
-        private final int[][][] SHAPES = {
-                // Tetromino shapes and rotations
-                {}, // Empty Shape
-                { { 1, 1, 1, 1 } }, // I shape
-                { { 1, 1, 1 }, { 0, 1, 0 } }, // T shape
-                { { 1, 1, 0 }, { 0, 1, 1 } }, // S shape
-                { { 0, 1, 1 }, { 1, 1, 0 } }, // Z shape
-                { { 1, 1 }, { 1, 1 } }, // O shape
-                { { 1, 1, 1 }, { 0, 0, 1 } } // L shape
-                // Add more shapes here
-        };
-
         public Tetromino() {
 
-            shapeIdentifier = (int) ((Math.random() * (SHAPES.length - 1) + 1));
+            shapeIdentifier = shapeOrder.get(currentShapeIndex++);
+            if (currentShapeIndex >= (SHAPES.length - 1)) {
+                initializeShapeOrder();
+            }
+
+            currentShapeIndex %= (SHAPES.length - 1);
+
             shape = SHAPES[shapeIdentifier];
             x = BOARD_WIDTH / 2 - shape[0].length / 2;
             y = 2;
@@ -422,6 +470,13 @@ public class TetrisGame extends JPanel implements ActionListener, KeyListener {
                             previewBlockSize, previewBlockSize);
                 }
             }
+        }
+
+        // Draw the paused screen
+        if (isPaused) {
+            g.setColor(Color.RED);
+            g.setFont(largeFont);
+            g.drawString("PAUSED", (int) (2.6 * BLOCK_SIZE), (BOARD_HEIGHT / 2) * BLOCK_SIZE);
         }
 
         // Draw the game over screen
