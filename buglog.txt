@@ -1,0 +1,4 @@
+jar cvfe Tetris.jar TetrisGame *.class
+
+-when stacked, can generate pieces over existing pieces
+-still prints game over to console
